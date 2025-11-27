@@ -1,0 +1,17 @@
+USE EERD_Project;
+GO
+
+PRINT 'TABLES';
+SELECT name FROM sys.tables;
+
+PRINT 'PROCS';
+SELECT name FROM sys.procedures;
+
+PRINT 'TRIGGERS';
+SELECT name FROM sys.triggers;
+
+PRINT 'USER SAMPLE';
+SELECT TOP 5 * FROM [User];
+
+PRINT 'WALLET SAMPLE';
+SELECT TOP 5 * FROM Wallet;
