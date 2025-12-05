@@ -6,6 +6,7 @@ export default function TransactionForm({ onSubmit, editing, onCancel }) {
   const defaultForm = {
     amount: "",
     description: "",
+    transactionDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
     type: "expense",
     sourceWalletID: "",
     destinationWalletID: "",
@@ -19,11 +20,14 @@ export default function TransactionForm({ onSubmit, editing, onCancel }) {
       setForm({
         amount: editing.amount,
         description: editing.description,
+        transactionDate: editing.transactionDate ? new Date(editing.transactionDate).toISOString().slice(0, 19).replace('T', ' ') : "",
         type: editing.type,
         sourceWalletID: editing.sourceWalletID || "",
         destinationWalletID: editing.destinationWalletID || "",
         categoryID: editing.categoryID || "",
       });
+    } else {
+      setForm(defaultForm);
     }
   }, [editing]);
 
@@ -44,7 +48,9 @@ export default function TransactionForm({ onSubmit, editing, onCancel }) {
     };
 
     onSubmit(payload);
-    setForm(defaultForm);
+    if (!editing) {
+      setForm(defaultForm);
+    }
   };
 
   return (
@@ -54,16 +60,31 @@ export default function TransactionForm({ onSubmit, editing, onCancel }) {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Số tiền</label>
-          <input
-            name="amount"
-            type="number"
-            value={form.amount}
-            onChange={handleChange}
-            required
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Số tiền</label>
+            <input
+              name="amount"
+              type="number"
+              value={form.amount}
+              onChange={handleChange}
+              required
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Ngày giao dịch</label>
+            <input
+              name="transactionDate"
+              type="datetime-local"
+              step="1"
+              value={form.transactionDate.replace(' ', 'T')}
+              onChange={(e) => handleChange({ target: { name: 'transactionDate', value: e.target.value.replace('T', ' ') } })}
+              required
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
+            />
+          </div>
         </div>
 
         <div>
@@ -90,35 +111,37 @@ export default function TransactionForm({ onSubmit, editing, onCancel }) {
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Source Wallet ID</label>
-          <input
-            name="sourceWalletID"
-            value={form.sourceWalletID}
-            onChange={handleChange}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
-          />
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Source Wallet ID</label>
+            <input
+              name="sourceWalletID"
+              value={form.sourceWalletID}
+              onChange={handleChange}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Destination Wallet ID</label>
-          <input
-            name="destinationWalletID"
-            value={form.destinationWalletID}
-            onChange={handleChange}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
-          />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Dest Wallet ID</label>
+            <input
+              name="destinationWalletID"
+              value={form.destinationWalletID}
+              onChange={handleChange}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1">Category ID</label>
-          <input
-            name="categoryID"
-            value={form.categoryID}
-            onChange={handleChange}
-            required
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Category ID</label>
+            <input
+              name="categoryID"
+              value={form.categoryID}
+              onChange={handleChange}
+              required
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-400"
+            />
+          </div>
         </div>
 
         <div className="flex space-x-2 pt-2">

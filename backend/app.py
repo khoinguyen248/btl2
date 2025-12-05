@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from db import get_connection
-import pyodbc
+import mysql.connector
 
 app = Flask(__name__)
 CORS(app)
@@ -27,18 +27,25 @@ def create_transaction():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "{CALL sp_InsertTransaction(?,?,?,?,?,?)}",
+        # Call MySQL Procedure
+        cursor.callproc('sp_InsertTransaction', [
             data["amount"],
             data.get("description"),
+            data.get("transactionDate"), # Expecting 'YYYY-MM-DD HH:MM:SS'
             data["type"],
+            data.get("status", "Completed"),
             data.get("sourceWalletID"),
             data.get("destinationWalletID"),
             data["categoryID"]
-        )
+        ])
         conn.commit()
         # Testcase 2: 201 + message
         return jsonify({"message": "Thêm giao dịch thành công"}), 201
+    except mysql.connector.Error as err:
+        if conn:
+            conn.rollback()
+        # Return specific error message from trigger/procedure
+        return jsonify({"error": str(err)}), 400
     except Exception as e:
         if conn:
             conn.rollback()
@@ -63,16 +70,24 @@ def update_transaction(tid):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "{CALL sp_UpdateTransaction(?,?,?,?)}",
+        cursor.callproc('sp_UpdateTransaction', [
             tid,
             data["amount"],
             data["description"],
+            data.get("transactionDate"),
+            data.get("type"),
+            data.get("status", "Completed"),
+            data.get("sourceWalletID"),
+            data.get("destinationWalletID"),
             data["categoryID"]
-        )
+        ])
         conn.commit()
         # Testcase 3
         return jsonify({"message": "Cập nhật giao dịch thành công"}), 200
+    except mysql.connector.Error as err:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(err)}), 400
     except Exception as e:
         if conn:
             conn.rollback()
@@ -91,14 +106,17 @@ def delete_transaction(tid):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("{CALL sp_DeleteTransaction(?)}", tid)
+        cursor.callproc('sp_DeleteTransaction', [tid])
         conn.commit()
         # Testcase 4
         return jsonify({"message": "Xóa giao dịch thành công"}), 200
+    except mysql.connector.Error as err:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(err)}), 400
     except Exception as e:
         if conn:
             conn.rollback()
-        # nếu sp báo lỗi ID không tồn tại -> trả error
         return jsonify({"error": str(e)}), 400
     finally:
         if cursor:
@@ -106,44 +124,94 @@ def delete_transaction(tid):
         if conn:
             conn.close()
 
-# ----------- API: LIST (PROC2 - PROC của bạn) ----------
+# ----------- API: LIST (PROC2 - sp_GetTransactionsByUser) ----------
 @app.route("/api/transactions", methods=["GET"])
 def list_transactions():
-    # lấy raw string
-    wallet_id_raw = request.args.get("walletId", default=None, type=str)
-    from_date = request.args.get("fromDate", default=None, type=str)
-    to_date = request.args.get("toDate", default=None, type=str)
+    user_id = request.args.get("userId", default=1, type=int)
+    start_date = request.args.get("startDate", default="", type=str)
+    end_date = request.args.get("endDate", default="", type=str)
 
-    # convert walletId -> int hoặc None (fix lỗi nvarchar -> int)
-    wallet_id = None
-    if wallet_id_raw not in (None, "", "null"):
-        try:
-            wallet_id = int(wallet_id_raw)
-        except ValueError:
-            return jsonify({"error": "walletId phải là số nguyên"}), 400
-
-    if from_date in ("", "null"):
-        from_date = None
-    if to_date in ("", "null"):
-        to_date = None
+    # Handle empty strings - use default date range
+    if not start_date or start_date == "":
+        start_date = "2024-01-01"
+    if not end_date or end_date == "":
+        end_date = "2025-12-31"
 
     conn = None
     cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "{CALL sp_GetTransactionsByWalletAndDate(?,?,?)}",
-            wallet_id,
-            from_date,
-            to_date
-        )
-        rows = rows_to_dicts(cursor)
-        # Testcase 1, 5, 7, 8, 9: luôn trả về array
-        return jsonify(rows), 200
+        
+        # In MySQL connector, callproc returns the args. 
+        # To get results, we must iterate stored_results()
+        cursor.callproc('sp_GetTransactionsByUser', [user_id, start_date, end_date])
+        
+        results = []
+        for result in cursor.stored_results():
+            results = rows_to_dicts(result)
+            break # We expect only one result set
+
+        return jsonify(results), 200
     except Exception as e:
         print("ERROR list_transactions:", e)
-        # Cho Postman thấy lỗi, nhưng React sẽ xử lý thêm
+        return jsonify({"error": str(e)}), 400
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# ----------- API: REPORT - EXPENSE BY CATEGORY (sp_SummaryExpenseByCategory) ----------
+@app.route("/api/reports/expense-by-category", methods=["GET"])
+def report_expense_by_category():
+    user_id = request.args.get("userId", default=1, type=int)
+    min_amount = request.args.get("minAmount", default=0, type=float)
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.callproc('sp_SummaryExpenseByCategory', [user_id, min_amount])
+        
+        results = []
+        for result in cursor.stored_results():
+            results = rows_to_dicts(result)
+            break
+
+        return jsonify(results), 200
+    except Exception as e:
+        print("ERROR report_expense_by_category:", e)
+        return jsonify({"error": str(e)}), 400
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# ----------- API: REPORT - MONTHLY EXPENSE (fn_UserMonthlyExpense) ----------
+@app.route("/api/reports/monthly-expense", methods=["GET"])
+def report_monthly_expense():
+    user_id = request.args.get("userId", default=1, type=int)
+    month = request.args.get("month", default=1, type=int)
+    year = request.args.get("year", default=2025, type=int)
+
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Call function: SELECT fn_UserMonthlyExpense(?, ?, ?)
+        query = "SELECT fn_UserMonthlyExpense(%s, %s, %s) AS totalExpense"
+        cursor.execute(query, (user_id, month, year))
+        
+        result = rows_to_dicts(cursor)
+        return jsonify(result[0] if result else {"totalExpense": 0}), 200
+    except Exception as e:
+        print("ERROR report_monthly_expense:", e)
         return jsonify({"error": str(e)}), 400
     finally:
         if cursor:
